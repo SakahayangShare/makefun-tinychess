@@ -186,6 +186,55 @@ class Position:
    self.unmake(m)
   return c
 
+ def eval(self):
+  mw=ew=mb=eb=0;ph=0;wp=[0]*8;bp=[0]*8;wb=bb=0
+  for sq in R(128):
+   if sq&0x88:continue
+   p=self.b[sq]
+   if not p:continue
+   f=sq&7;r=sq>>4;c=0 if(p&8)==0 else 8;pt=p&7;mr=7-r if c else r
+   if c==0:
+    if pt==1:wp[f]+=1
+    elif pt==3:wb+=1
+   else:
+    if pt==1:bp[f]+=1
+    elif pt==3:bb+=1
+   if pt in(2,3):ph+=1
+   elif pt==4:ph+=2
+   elif pt==5:ph+=4
+  ph=min(24,ph)
+  for sq in R(128):
+   if sq&0x88:continue
+   p=self.b[sq]
+   if not p:continue
+   f=sq&7;r=sq>>4;c=0 if(p&8)==0 else 8;pt=p&7;mr=7-r if c else r
+   if pt==1:
+    m,e=100+(mr-1)*6+(5 if f in(3,4) else 0),100+(mr-1)*10+(5 if f in(3,4) else 0)
+   elif pt==2:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=320+cent*4,320+cent*3
+   elif pt==3:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=330+cent*2,330+cent*2
+   elif pt==4:
+    m,e=500+(25 if mr==6 else 0)+(12 if wp[f]==0 and bp[f]==0 else 0),500+(25 if mr==6 else 0)+(12 if wp[f]==0 and bp[f]==0 else 0)
+   elif pt==5:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=900+cent,900
+   elif pt==6:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=cent*-8,cent*6
+   else:
+    m=e=0
+   if c==0:mw+=m;ew+=e
+   else:mb+=m;eb+=e
+  if wb>=2:mw+=30;ew+=30
+  if bb>=2:mb+=30;eb+=30
+  sw=(mw*ph+ew*(24-ph))//24
+  sb=(mb*ph+eb*(24-ph))//24
+  s=sw-sb
+  return -s if self.t==8 else s
+
 if"MAKEFUN_ENV_URL"in os.environ:
  u=os.environ["MAKEFUN_ENV_URL"]
  def p(x,b):
