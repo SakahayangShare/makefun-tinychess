@@ -129,9 +129,9 @@ class Position:
  def make(self,m):
   fs=m&0x7F;ts=(m>>7)&0x7F;pr=(m>>14)&7
   p=self.b[fs];cp=self.b[ts];ep=self.e;cc=self.c;h=self.h
-  self.u.append((cp,cc,ep,h,m))
   if ep and(p&7)==1 and ts==ep:
    cp=9 if self.t==0 else 1;self.b[ts-(16 if self.t==0 else -16)]=0
+  self.u.append((cp,cc,ep,h,m))
   if(p&7)==6 and abs(fs-ts)==2:
    if ts==6:self.b[5]=self.b[7];self.b[7]=0
    elif ts==2:self.b[3]=self.b[0];self.b[0]=0
@@ -152,7 +152,7 @@ class Position:
   cp,cc,ep,h,m=self.u.pop()
   fs=m&0x7F;ts=(m>>7)&0x7F;pr=(m>>14)&7
   self.t=8-self.t
-  np=self.b[ts];self.b[ts]=0;self.b[fs]=self.t|(np&7)if pr else np
+  np=self.b[ts];self.b[ts]=0;self.b[fs]=self.t|1 if pr else np
   if ep and(np&7)==1 and ts==ep:
    self.b[ts-(16 if self.t==0 else -16)]=cp
   else:
