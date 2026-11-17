@@ -132,12 +132,12 @@ class Position:
  def make(self,m):
   fs=m&0x7F;ts=(m>>7)&0x7F;pr=(m>>14)&7
   p=self.b[fs];cp=self.b[ts];ep=self.e;cc=self.c;hm=self.hm;h=self.h
-  self.u.append((cp,cc,ep,hm,h,m))
   if ep and(p&7)==1 and ts==ep:
    cp=9 if self.t==0 else 1
    capsq=ts-16 if self.t==0 else ts+16
    self.b[capsq]=0
    self.h^=ZP[cp][capsq]
+  self.u.append((cp,cc,ep,hm,h,m))
   if cp and not(ep and(p&7)==1 and ts==ep):
    self.h^=ZP[cp][ts]
   self.h^=ZP[p][fs]
