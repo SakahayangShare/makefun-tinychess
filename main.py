@@ -2,6 +2,8 @@ import json,os,urllib.request
 R=range
 S=str
 _s=1070372
+NCAP=30000
+nodes=0
 def r64():
  global _s
  _s^=(_s<<13)&0xFFFFFFFFFFFFFFFF
@@ -29,6 +31,7 @@ class Position:
    for ch,mk in zip('KQkq',[1,2,4,8]):
     if ch in p[2]:self.c|=mk
   self.e=ssq(p[3])if len(p)>3 and p[3]!='-'else 0
+  self.hm=int(p[4])if len(p)>4 else 0
   self.u=[]
   self.h=0
   for sq in R(128):
@@ -128,17 +131,32 @@ class Position:
 
  def make(self,m):
   fs=m&0x7F;ts=(m>>7)&0x7F;pr=(m>>14)&7
-  p=self.b[fs];cp=self.b[ts];ep=self.e;cc=self.c;h=self.h
+  p=self.b[fs];cp=self.b[ts];ep=self.e;cc=self.c;hm=self.hm;h=self.h
+  self.u.append((cp,cc,ep,hm,h,m))
   if ep and(p&7)==1 and ts==ep:
-   cp=9 if self.t==0 else 1;self.b[ts-(16 if self.t==0 else -16)]=0
-  self.u.append((cp,cc,ep,h,m))
+   cp=9 if self.t==0 else 1
+   capsq=ts-16 if self.t==0 else ts+16
+   self.b[capsq]=0
+   self.h^=ZP[cp][capsq]
+  if cp and not(ep and(p&7)==1 and ts==ep):
+   self.h^=ZP[cp][ts]
+  self.h^=ZP[p][fs]
   if(p&7)==6 and abs(fs-ts)==2:
-   if ts==6:self.b[5]=self.b[7];self.b[7]=0
-   elif ts==2:self.b[3]=self.b[0];self.b[0]=0
-   elif ts==118:self.b[117]=self.b[119];self.b[119]=0
-   elif ts==114:self.b[115]=self.b[112];self.b[112]=0
+   if ts==6:
+    self.b[5]=self.b[7];self.b[7]=0
+    self.h^=ZP[4][7];self.h^=ZP[4][5]
+   elif ts==2:
+    self.b[3]=self.b[0];self.b[0]=0
+    self.h^=ZP[4][0];self.h^=ZP[4][3]
+   elif ts==118:
+    self.b[117]=self.b[119];self.b[119]=0
+    self.h^=ZP[12][119];self.h^=ZP[12][117]
+   elif ts==114:
+    self.b[115]=self.b[112];self.b[112]=0
+    self.h^=ZP[12][112];self.h^=ZP[12][115]
   np=self.t|pr if pr else p
   self.b[fs]=0;self.b[ts]=np
+  self.h^=ZP[np][ts]
   self.e=(fs+ts)//2 if((p&7)==1 and abs(fs-ts)==32)else 0
   if fs==4 or ts==4:self.c&=~3
   if fs==116 or ts==116:self.c&=~12
@@ -147,14 +165,23 @@ class Position:
   if fs==112 or ts==112:self.c&=~8
   if fs==119 or ts==119:self.c&=~4
   self.t=8-self.t
+  self.h^=ZS
+  if cc!=self.c:
+   if cc:self.h^=ZC[cc]
+   if self.c:self.h^=ZC[self.c]
+  if ep!=self.e:
+   if ep:self.h^=ZE[ep]
+   if self.e:self.h^=ZE[self.e]
+  self.hm=0 if((p&7)==1 or cp)else self.hm+1
 
  def unmake(self,m):
-  cp,cc,ep,h,m=self.u.pop()
+  cp,cc,ep,hm,h,m=self.u.pop()
   fs=m&0x7F;ts=(m>>7)&0x7F;pr=(m>>14)&7
   self.t=8-self.t
   np=self.b[ts];self.b[ts]=0;self.b[fs]=self.t|1 if pr else np
   if ep and(np&7)==1 and ts==ep:
-   self.b[ts-(16 if self.t==0 else -16)]=cp
+   capsq=ts-16 if self.t==0 else ts+16
+   self.b[capsq]=cp
   else:
    self.b[ts]=cp
   if(np&7)==6 and abs(fs-ts)==2:
@@ -162,7 +189,134 @@ class Position:
    elif ts==2:self.b[0]=self.b[3];self.b[3]=0
    elif ts==118:self.b[119]=self.b[117];self.b[117]=0
    elif ts==114:self.b[112]=self.b[115];self.b[115]=0
-  self.c=cc;self.e=ep;self.h=h
+  self.c=cc;self.e=ep;self.h=h;self.hm=hm
+
+ def eval(self):
+  mw=ew=mb=eb=0;ph=0;wp=[0]*8;bp=[0]*8;wb=bb=0
+  for sq in R(128):
+   if sq&0x88:continue
+   p=self.b[sq]
+   if not p:continue
+   f=sq&7;r=sq>>4;c=0 if(p&8)==0 else 8;pt=p&7;mr=7-r if c else r
+   if c==0:
+    if pt==1:wp[f]+=1
+    elif pt==3:wb+=1
+   else:
+    if pt==1:bp[f]+=1
+    elif pt==3:bb+=1
+   if pt in(2,3):ph+=1
+   elif pt==4:ph+=2
+   elif pt==5:ph+=4
+  ph=min(24,ph)
+  for sq in R(128):
+   if sq&0x88:continue
+   p=self.b[sq]
+   if not p:continue
+   f=sq&7;r=sq>>4;c=0 if(p&8)==0 else 8;pt=p&7;mr=7-r if c else r
+   if pt==1:
+    m,e=100+(mr-1)*6+(5 if f in(3,4) else 0),100+(mr-1)*10+(5 if f in(3,4) else 0)
+   elif pt==2:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=320+cent*4,320+cent*3
+   elif pt==3:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=330+cent*2,330+cent*2
+   elif pt==4:
+    m,e=500+(25 if mr==6 else 0)+(12 if wp[f]==0 and bp[f]==0 else 0),500+(25 if mr==6 else 0)+(12 if wp[f]==0 and bp[f]==0 else 0)
+   elif pt==5:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=900+cent,900
+   elif pt==6:
+    cent=3.5-abs(f-3.5)+3.5-abs(mr-3.5)
+    m,e=cent*-8,cent*6
+   else:
+    m=e=0
+   if c==0:mw+=m;ew+=e
+   else:mb+=m;eb+=e
+  if wb>=2:mw+=30;ew+=30
+  if bb>=2:mb+=30;eb+=30
+  sw=(mw*ph+ew*(24-ph))//24
+  sb=(mb*ph+eb*(24-ph))//24
+  s=sw-sb
+  return -s if self.t==8 else s
+
+ def qsearch(self,alpha,beta):
+  global nodes
+  nodes+=1
+  in_chk=self.attacked(self.king_sq(self.t),8-self.t)
+  moves=[]
+  for m in self.gen_moves():
+   self.make(m)
+   if not self.attacked(self.king_sq(8-self.t),self.t):
+    moves.append(m)
+   self.unmake(m)
+  if not moves:
+   return(-100000)if in_chk else 0
+  sp=self.eval()
+  if sp>=beta:return beta
+  if alpha<sp:alpha=sp
+  for m in self.gen_moves():
+   cp=self.b[(m>>7)&0x7F];pr=(m>>14)&7
+   if not in_chk and not cp and not pr:continue
+   self.make(m)
+   if not self.attacked(self.king_sq(8-self.t),self.t):
+    score=-self.qsearch(-beta,-alpha)
+    self.unmake(m)
+    if score>=beta:return beta
+    if score>alpha:alpha=score
+   else:self.unmake(m)
+  return alpha
+
+ def negamax(self,depth,alpha,beta,ply):
+  global nodes
+  if self.hm>=100:return 0
+  moves=[]
+  for m in self.gen_moves():
+   self.make(m)
+   if not self.attacked(self.king_sq(8-self.t),self.t):
+    moves.append(m)
+   self.unmake(m)
+  if not moves:
+   in_chk=self.attacked(self.king_sq(self.t),8-self.t)
+   return(-100000+ply)if in_chk else 0
+  if depth==0:return self.qsearch(alpha,beta)
+  for m in moves:
+   nodes+=1
+   if nodes>NCAP:break
+   self.make(m)
+   score=-self.negamax(depth-1,-beta,-alpha,ply+1)
+   self.unmake(m)
+   if nodes>NCAP:break
+   if score>=beta:return beta
+   if score>alpha:alpha=score
+  return alpha
+
+ def search_root(self):
+  global nodes
+  nodes=0
+  best_m=None
+  legal_moves=[]
+  for m in self.gen_moves():
+   self.make(m)
+   if not self.attacked(self.king_sq(8-self.t),self.t):
+    legal_moves.append(m)
+   self.unmake(m)
+  if not legal_moves:return None
+  best_m=legal_moves[0]
+  for d in R(1,100):
+   alpha=-200000;beta=200000;best_score=-200000;current_best=None
+   for m in legal_moves:
+    nodes+=1
+    self.make(m)
+    score=-self.negamax(d-1,-beta,-alpha,1)
+    self.unmake(m)
+    if nodes>NCAP:break
+    if score>best_score:
+     best_score=score;current_best=m
+    if score>alpha:alpha=score
+   if nodes>NCAP:break
+   if current_best is not None:best_m=current_best
+  return best_m
 
  def lm(self):
   res=[]
